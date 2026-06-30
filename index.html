@@ -648,9 +648,13 @@
             touch-action: manipulation;
             -webkit-touch-callout: none;
             user-select: none;
+            cursor: pointer;
+            position: relative;
+            min-height: 120px;
         }
         .upload-area:active {
-            background: #f0f0f0;
+            background: #eef2ff;
+            border-color: #667eea !important;
         }
         /* iOS Safari 修复 */
         @supports (-webkit-touch-callout: none) {
@@ -658,6 +662,10 @@
                 cursor: pointer;
                 -webkit-user-select: none;
             }
+        }
+        /* 确保上传区域在 iOS 上可点击 */
+        .upload-area * {
+            pointer-events: none;
         }
     </style>
 </head>
