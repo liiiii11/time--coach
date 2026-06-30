@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>课程时间统计</title>
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js'></script>
+    <script src='https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js'></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -45,14 +45,44 @@
         .upload-area {
             border: 2px dashed #d1d5db;
             border-radius: 12px;
-            padding: 32px 20px;
+            padding: 40px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
             position: relative;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .upload-area:active {
+            background: #f0f0f0;
+            transform: scale(0.98);
         }
         .upload-area:hover { border-color: #667eea; background: #f9fafb; }
-        .upload-area input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .upload-area input { position: absolute; inset: 0; opacity: 0; cursor: pointer; -webkit-appearance: none; }
+        /* iOS Safari 修复 */
+        .upload-area {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .upload-area input {
+            /* 确保在 iOS 上可点击 */
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        /* 修复 iOS 上 fixed 定位按钮被遮挡 */
+        .reward-btn {
+            -webkit-transform: translateY(-50%);
+            transform: translateY(-50%);
+        }
+
         .upload-icon { font-size: 36px; margin-bottom: 8px; }
         .upload-text { color: #374151; font-size: 0.95em; }
         .upload-hint { color: #9ca3af; font-size: 0.8em; margin-top: 4px; }
@@ -584,6 +614,51 @@
             font-size: 0.9em;
             font-weight: 500;
         }
+
+        /* iOS Safari 兼容修复 */
+        .upload-area input {
+            -webkit-appearance: none;
+            appearance: none;
+            opacity: 0;
+            cursor: pointer;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+        /* 修复 iOS 点击高亮 */
+        .upload-area, .btn, .screenshot-item, .tab, .modal-close, .screenshot-delete {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+        }
+        /* 修复 iOS 按钮样式 */
+        .btn, button {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        /* 修复 iOS 滚动 */
+        body {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* 移动端上传优化 */
+        .upload-area {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            user-select: none;
+        }
+        .upload-area:active {
+            background: #f0f0f0;
+        }
+        /* iOS Safari 修复 */
+        @supports (-webkit-touch-callout: none) {
+            .upload-area {
+                cursor: pointer;
+                -webkit-user-select: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -633,10 +708,18 @@
 
         <div class="upload-card">
             <div class="upload-area" id="uploadArea">
-                <input type="file" id="fileInput" accept="image/*" multiple>
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif" multiple capture="filesystem" style="position:absolute;inset:0;opacity:0;cursor:pointer;z-index:10;-webkit-tap-highlight-color:transparent;">
                 <div class="upload-icon">📷</div>
-                <div class="upload-text">点击或拖拽上传截图</div>
-                <div class="upload-hint">自动识别课程名称、日期和时间</div>
+                <div class="upload-text">点击上传截图</div>
+                <div class="upload-hint">支持相册选择或拍照</div>
+            </div>
+            <div class="btn-row" style="margin-top:10px;">
+                <button class="btn btn-secondary" style="flex:1;" onclick="triggerFileInput('gallery')">
+                    🖼️ 相册
+                </button>
+                <button class="btn btn-secondary" style="flex:1;" onclick="triggerFileInput('camera')">
+                    📸 拍照
+                </button>
             </div>
             <div class="progress-bar" id="progressBar">
                 <div class="progress-fill" id="progressFill"></div>
@@ -719,6 +802,16 @@
     <div class="toast" id="toast"></div>
 
     <script>
+        // iOS Safari 兼容性检测
+        (function() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            if (isIOS && isSafari) {
+                console.log('iOS Safari detected - upload optimizations applied');
+                document.body.classList.add('ios-safari');
+            }
+        })();
+
         // 课程配置 - 精确匹配，避免重复
         // 优先级从高到低，先匹配长的、精确的
         const COURSE_CONFIG = {
@@ -810,7 +903,11 @@
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
 
-        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('click', function(e) {
+    // iOS Safari 兼容：确保在用户点击事件内触发文件选择
+    e.preventDefault();
+    fileInput.click();
+});
         uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = '#667eea'; });
         uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = '#d1d5db'; });
         uploadArea.addEventListener('drop', e => {
@@ -821,9 +918,14 @@
         fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
         function handleFiles(files) {
-            if (!files) return;
-            Array.from(files).forEach(file => {
-                if (!file.type.startsWith('image/')) return;
+            if (!files || files.length === 0) return;
+            // iOS 有时 files 是 FileList 但 length 为 0，需要检查
+            const fileArray = Array.from(files).filter(f => f && f.type && f.type.startsWith('image/'));
+            if (fileArray.length === 0) {
+                showToast('未检测到图片文件，请重新选择');
+                return;
+            }
+            fileArray.forEach(file => {
                 const reader = new FileReader();
                 reader.onload = e => {
                     screenshots.push({
@@ -834,9 +936,13 @@
                     });
                     updateUI();
                 };
+                reader.onerror = () => {
+                    showToast('图片读取失败，请重试');
+                };
                 reader.readAsDataURL(file);
             });
-            fileInput.value = '';
+            // iOS 需要延迟清空，否则可能导致下次选择同一个文件不触发 change
+            setTimeout(() => { fileInput.value = ''; }, 100);
         }
 
         // 检测课程 - 按优先级排序，避免重复匹配
@@ -1507,6 +1613,36 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeReward();
         });
+    </script>
+
+    <script>
+        // iOS Safari 兼容性检测
+        (function() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            if (isIOS && isSafari) {
+                console.log('iOS Safari detected - upload optimizations applied');
+                document.body.classList.add('ios-safari');
+            }
+        })();
+
+        // iOS Safari 检测与提示
+        (function() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+            if (isIOS && isSafari) {
+                console.log('iOS Safari detected');
+                // 更新上传区域提示文字
+                const uploadArea = document.getElementById('uploadArea');
+                if (uploadArea) {
+                    const hint = uploadArea.querySelector('.upload-hint');
+                    if (hint) {
+                        hint.textContent = '点击选择照片（支持相册/拍照）';
+                    }
+                }
+            }
+        })();
     </script>
 </body>
 </html>
