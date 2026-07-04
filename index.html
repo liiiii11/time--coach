@@ -1512,5 +1512,238 @@
             if (e.key === 'Escape') closeReward();
         });
     </script>
+
+
+<!-- ==================== 数据持久化模块 ==================== -->
+<script>
+// 数据持久化管理
+const AppStorage = {
+    KEY: 'courseTimeApp_v1',
+
+    save(state) {
+        try {
+            const data = {
+                version: 1,
+                records: state.records || [],
+                stats: state.stats || null,
+                screenshots: (state.screenshots || []).map(s => ({
+                    id: s.id,
+                    courses: s.courses,
+                    status: s.status,
+                    timestamp: s.timestamp,
+                    name: s.name
+                })), // 不保存图片数据，避免超出localStorage限制
+                lastUpdate: Date.now()
+            };
+            localStorage.setItem(this.KEY, JSON.stringify(data));
+            return true;
+        } catch (e) {
+            console.error('保存失败:', e);
+            showToast('保存失败，数据可能太大，请导出备份');
+            return false;
+        }
+    },
+
+    load() {
+        try {
+            const raw = localStorage.getItem(this.KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            console.error('读取失败:', e);
+            return null;
+        }
+    },
+
+    clear() {
+        localStorage.removeItem(this.KEY);
+    },
+
+    exportToFile() {
+        const data = this.load();
+        if (!data || !data.records || data.records.length === 0) {
+            showToast('没有数据可导出');
+            return;
+        }
+
+        const exportData = {
+            ...data,
+            exportTime: new Date().toLocaleString('zh-CN')
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `课程时间统计_${new Date().toLocaleDateString()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('数据已导出');
+    },
+
+    importFromFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.records) {
+                        this.save(data);
+                        resolve(data);
+                    } else {
+                        reject(new Error('文件格式不正确'));
+                    }
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = () => reject(new Error('读取文件失败'));
+            reader.readAsText(file);
+        });
+    }
+};
+
+// 页面加载时恢复数据
+window.addEventListener('DOMContentLoaded', () => {
+    // 延迟执行，确保原有代码已经初始化
+    setTimeout(() => {
+        restoreData();
+        addPersistenceButtons();
+    }, 100);
+});
+
+function restoreData() {
+    const saved = AppStorage.load();
+    if (!saved) return;
+
+    // 恢复记录
+    if (saved.records && saved.records.length > 0) {
+        records = saved.records;
+        updateUI();
+        showToast(`已恢复 ${saved.records.length} 条记录`);
+    }
+
+    // 恢复截图列表信息（不恢复图片数据）
+    if (saved.screenshots && saved.screenshots.length > 0) {
+        screenshots = saved.screenshots.map(s => ({
+            ...s,
+            dataUrl: null  // 图片数据不恢复
+        }));
+        updateScreenshotList();
+    }
+}
+
+function updateScreenshotList() {
+    const list = document.getElementById('screenshotList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (screenshots.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📷</div>
+                <div>暂无截图</div>
+            </div>
+        `;
+        return;
+    }
+
+    screenshots.forEach((shot, index) => {
+        const item = document.createElement('div');
+        item.className = 'screenshot-item';
+        item.onclick = () => openPreview(index);
+
+        // 如果有图片数据则显示，否则显示占位图
+        const imgSrc = shot.dataUrl || `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Crect width='60' height='60' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-size='10'%3E已保存%3C/text%3E%3C/svg%3E`;
+
+        item.innerHTML = `
+            <img src="${imgSrc}" alt="截图" style="${shot.dataUrl ? '' : 'opacity:0.5'}">
+            <div class="screenshot-info">
+                <div class="screenshot-status">${shot.status || '已处理'}</div>
+                <div class="screenshot-courses">${shot.courses || '课程截图'}</div>
+            </div>
+            <button class="screenshot-delete" onclick="event.stopPropagation(); deleteScreenshot(${index})" title="删除">×</button>
+        `;
+        list.appendChild(item);
+    });
+}
+
+function addPersistenceButtons() {
+    const exportBar = document.querySelector('.export-bar');
+    if (!exportBar) return;
+
+    // 添加导入按钮
+    const importBtn = document.createElement('button');
+    importBtn.innerHTML = '📥 导入';
+    importBtn.onclick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            AppStorage.importFromFile(file).then((data) => {
+                records = data.records || [];
+                updateUI();
+                showToast('数据导入成功');
+            }).catch((err) => {
+                showToast('导入失败: ' + err.message);
+            });
+        };
+        input.click();
+    };
+
+    // 添加导出按钮
+    const exportBtn = document.createElement('button');
+    exportBtn.innerHTML = '📤 导出';
+    exportBtn.onclick = () => {
+        AppStorage.exportToFile();
+    };
+
+    // 添加清空按钮
+    const clearBtn = document.createElement('button');
+    clearBtn.innerHTML = '🗑️ 清空';
+    clearBtn.onclick = () => {
+        if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+            records = [];
+            screenshots = [];
+            AppStorage.clear();
+            updateUI();
+            showToast('数据已清空');
+        }
+    };
+
+    exportBar.appendChild(importBtn);
+    exportBar.appendChild(exportBtn);
+    exportBar.appendChild(clearBtn);
+}
+
+// 自动保存函数
+function autoSave() {
+    AppStorage.save({
+        records: records,
+        stats: null,
+        screenshots: screenshots
+    });
+}
+
+// 重写关键函数，添加自动保存
+const originalUpdateUI = updateUI;
+updateUI = function() {
+    originalUpdateUI();
+    autoSave();
+};
+
+const originalClearAll = clearAll;
+clearAll = function() {
+    originalClearAll();
+    AppStorage.clear();
+};
+</script>
 </body>
 </html>
