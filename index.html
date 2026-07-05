@@ -4,22 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>课程时间统计</title>
-    <script>
-// 异步加载 Tesseract.js，失败不影响页面核心功能
-(function() {
-    var script = document.createElement('script');
-    script.src = 'https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js';
-    script.async = true;
-    script.onerror = function() {
-        console.warn('Tesseract.js 加载失败，OCR功能不可用，但手动输入功能正常');
-        window.Tesseract = null;
-    };
-    script.onload = function() {
-        console.log('Tesseract.js 加载成功');
-    };
-    document.head.appendChild(script);
-})();
-</script>
+    <script src='https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js'></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -765,12 +750,6 @@
             }
         };
 
-        // 排除关键词配置 - 识别成功后自动剔除
-        const EXCLUDE_KEYWORDS = [
-            '离开时段', '离开', '休息', '午休', '用餐', '吃饭', '请假',
-            '外出', '出差', '调休', '休假', '请假时段', '外出时段'
-        ];
-
         // 日期正则
         const DATE_PATTERNS = [
             /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/,
@@ -781,7 +760,7 @@
         // 时间正则
         const TIME_PATTERNS = [
             {
-                regex: /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~至到—–]\s*(\d{1,2}):(\d{2})/,
+                regex: /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~至到]\s*(\d{1,2}):(\d{2})/,
                 type: 'range',
                 hasDate: true,
                 year: 1, month: 2, day: 3,
@@ -789,7 +768,7 @@
                 endHour: 6, endMin: 7
             },
             {
-                regex: /(\d{1,2})[-\/](\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~至到—–]\s*(\d{1,2}):(\d{2})/,
+                regex: /(\d{1,2})[-\/](\d{1,2})\s+(\d{1,2}):(\d{2})\s*[-~至到]\s*(\d{1,2}):(\d{2})/,
                 type: 'range',
                 hasDate: true,
                 month: 1, day: 2,
@@ -797,14 +776,14 @@
                 endHour: 5, endMin: 6
             },
             {
-                regex: /(\d{1,2}):(\d{2})\s*[-~至到—–]\s*(\d{1,2}):(\d{2})/,
+                regex: /(\d{1,2}):(\d{2})\s*[-~至到]\s*(\d{1,2}):(\d{2})/,
                 type: 'range',
                 hasDate: false,
                 startHour: 1, startMin: 2,
                 endHour: 3, endMin: 4
             },
             {
-                regex: /(\d{1,2})[点:](\d{2})[分]?\s*[-~至到—–]\s*(\d{1,2})[点:](\d{2})[分]?/,
+                regex: /(\d{1,2})[点:](\d{2})[分]?\s*[-~至到]\s*(\d{1,2})[点:](\d{2})[分]?/,
                 type: 'range',
                 hasDate: false,
                 startHour: 1, startMin: 2,
@@ -909,9 +888,6 @@
             const cleanText = text
                 .replace(/\s+/g, '')  // 去除所有空格
                 .replace(/[　]/g, '') // 去除全角空格
-                .replace(/[—–]/g, '-') // 统一破折号为短横线
-                .replace(/[（(]/g, '(') // 统一左括号
-                .replace(/[）)]/g, ')') // 统一右括号
                 .replace(/[凝疑]/g, '疑') // 凝/疑 混淆
                 .replace(/[棵课颗]/g, '课') // 棵/课/颗 混淆
                 .replace(/[持支]/g, '支') // 持/支 混淆
@@ -922,13 +898,6 @@
                 .replace(/[开开]/g, '开') // 重复开
                 .replace(/[答荅]/g, '答') // 答/荅 混淆
                 .replace(/[疑凝]/g, '疑'); // 疑/凝 混淆
-
-            // 先检查排除关键词 - 如果包含则返回 null（表示明确排除）
-            for (const excludeKw of EXCLUDE_KEYWORDS) {
-                if (cleanText.includes(excludeKw)) {
-                    return null;
-                }
-            }
 
             // 同样清理关键词用于匹配
             function cleanKeyword(kw) {
@@ -948,12 +917,14 @@
             }
 
             // 第二轮：最长子串匹配 - 防止短关键词覆盖长关键词
+            // 例如 "门店" 不应该覆盖 "到店私教答疑" 中的 "店"
             let bestMatch = '';
             let bestLength = 0;
             for (const [courseName, config] of sortedCourses) {
                 for (const keyword of config.keywords) {
                     const cleanKw = cleanKeyword(keyword);
                     if (cleanKw.length < 2) continue;
+                    // 检查是否是子串
                     if (cleanText.includes(cleanKw)) {
                         if (cleanKw.length > bestLength) {
                             bestLength = cleanKw.length;
@@ -975,6 +946,7 @@
                             for (let j = 0; j < cleanKw.length; j++) {
                                 if (slice[j] !== cleanKw[j]) diff++;
                             }
+                            // 长度>=4允许1个错误，>=6允许2个错误
                             const threshold = cleanKw.length >= 6 ? 2 : (cleanKw.length >= 4 ? 1 : 0);
                             if (diff <= threshold) {
                                 return courseName;
@@ -1064,8 +1036,7 @@
         }
 
         function extractRecords(text) {
-            const lines = text.split(/
-/).map(l => l.trim()).filter(l => l.length > 0);
+            const lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
             const records = [];
             let currentDate = null;
 
@@ -1081,15 +1052,9 @@
                 const course = detectCourse(line);
                 const time = parseTime(line, currentDate);
 
-                // course === null 表示明确排除（如"离开时段"），不进行跨行匹配
-                // course === '' 表示未匹配到课程，可以进行跨行匹配
-                // course 为有效课程名，正常处理
-
                 if (course && time) {
-                    // 同一行有课程和时间
                     records.push({ course, ...time });
                 } else if (course && !time) {
-                    // 有课程但没时间，向后查找时间
                     for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
                         const t = parseTime(lines[j], currentDate);
                         if (t) {
@@ -1097,32 +1062,20 @@
                             break;
                         }
                     }
-                } else if (course === '' && time) {
-                    // 无课程但有时间（且不是排除项），向前查找课程
+                } else if (!course && time) {
                     for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
                         const c = detectCourse(lines[j]);
-                        if (c && c !== '') {
+                        if (c) {
                             records.push({ course: c, ...time });
                             break;
                         }
                     }
                 }
-                // course === null 时（排除项），完全跳过，不进行任何匹配
             }
-
-            // 过滤排除关键词记录（二次保险）
-            const filteredRecords = records.filter(r => {
-                if (!r.course) return false;
-                const courseClean = r.course.replace(/\s+/g, '');
-                for (const excludeKw of EXCLUDE_KEYWORDS) {
-                    if (courseClean.includes(excludeKw)) return false;
-                }
-                return true;
-            });
 
             // 去重
             const seen = new Set();
-            return filteredRecords.filter(r => {
+            return records.filter(r => {
                 const key = r.course + '|' + r.timeRange + '|' + (r.date ? r.date.year + '-' + r.date.month + '-' + r.date.day : '');
                 if (seen.has(key)) return false;
                 seen.add(key);
@@ -1646,17 +1599,29 @@ updateUI();
 <script>
 // 数据持久化管理
 const AppStorage = {
-    KEY: 'course_time_records_v1',
+    KEY: 'courseTimeApp_v1',
 
-    save(data) {
+    save(state) {
         try {
-            localStorage.setItem(this.KEY, JSON.stringify({
-                records: data.records || [],
-                screenshots: data.screenshots || [],
-                timestamp: Date.now()
-            }));
-        } catch(e) {
-            console.warn('自动保存失败:', e);
+            const data = {
+                version: 1,
+                records: state.records || [],
+                stats: state.stats || null,
+                screenshots: (state.screenshots || []).map(s => ({
+                    id: s.id,
+                    courses: s.courses,
+                    status: s.status,
+                    timestamp: s.timestamp,
+                    name: s.name
+                })), // 不保存图片数据，避免超出localStorage限制
+                lastUpdate: Date.now()
+            };
+            localStorage.setItem(this.KEY, JSON.stringify(data));
+            return true;
+        } catch (e) {
+            console.error('保存失败:', e);
+            showToast('保存失败，数据可能太大，请导出备份');
+            return false;
         }
     },
 
@@ -1664,94 +1629,164 @@ const AppStorage = {
         try {
             const raw = localStorage.getItem(this.KEY);
             if (!raw) return null;
-            const data = JSON.parse(raw);
-            if (!Array.isArray(data.records)) data.records = [];
-            if (!Array.isArray(data.screenshots)) data.screenshots = [];
-            return data;
-        } catch(e) {
-            console.warn('读取存档失败:', e);
+            return JSON.parse(raw);
+        } catch (e) {
+            console.error('读取失败:', e);
             return null;
         }
     },
 
     clear() {
         localStorage.removeItem(this.KEY);
+    },
+
+    exportToFile() {
+        const data = this.load();
+        if (!data || !data.records || data.records.length === 0) {
+            showToast('没有数据可导出');
+            return;
+        }
+
+        const exportData = {
+            ...data,
+            exportTime: new Date().toLocaleString('zh-CN')
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `课程时间统计_${new Date().toLocaleDateString()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('数据已导出');
+    },
+
+    importFromFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.records) {
+                        this.save(data);
+                        resolve(data);
+                    } else {
+                        reject(new Error('文件格式不正确'));
+                    }
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = () => reject(new Error('读取文件失败'));
+            reader.readAsText(file);
+        });
     }
 };
 
 // 页面加载时恢复数据
-document.addEventListener('DOMContentLoaded', function() {
-    const data = AppStorage.load();
-    if (data) {
-        if (data.records && data.records.length > 0) {
-            records = data.records;
-        }
-        if (data.screenshots && data.screenshots.length > 0) {
-            screenshots = data.screenshots;
-        }
-        updateUI();
-        showToast('已恢复上次的数据');
-    }
-
-    // 安全地包装函数
-    if (typeof updateUI === 'function') {
-        const originalUpdateUI = updateUI;
-        window.updateUI = function() {
-            originalUpdateUI.apply(this, arguments);
-            autoSave();
-        };
-    }
-
-    if (typeof clearAll === 'function') {
-        const originalClearAll = clearAll;
-        window.clearAll = function() {
-            originalClearAll.apply(this, arguments);
-            AppStorage.clear();
-        };
-    }
+window.addEventListener('DOMContentLoaded', () => {
+    // 延迟执行，确保原有代码已经初始化
+    setTimeout(() => {
+        restoreData();
+        addPersistenceButtons();
+    }, 100);
 });
 
-// 自动保存函数
-function autoSave() {
-    AppStorage.save({
-        records: records,
-        screenshots: screenshots
+function restoreData() {
+    const saved = AppStorage.load();
+    if (!saved) return;
+
+    // 恢复记录
+    if (saved.records && saved.records.length > 0) {
+        records = saved.records;
+        updateUI();
+        showToast(`已恢复 ${saved.records.length} 条记录`);
+    }
+
+    // 恢复截图列表信息（不恢复图片数据）
+    if (saved.screenshots && saved.screenshots.length > 0) {
+        screenshots = saved.screenshots.map(s => ({
+            ...s,
+            dataUrl: null  // 图片数据不恢复
+        }));
+        updateScreenshotList();
+    }
+}
+
+function updateScreenshotList() {
+    const list = document.getElementById('screenshotList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (screenshots.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📷</div>
+                <div>暂无截图</div>
+            </div>
+        `;
+        return;
+    }
+
+    screenshots.forEach((shot, index) => {
+        const item = document.createElement('div');
+        item.className = 'screenshot-item';
+        item.onclick = () => openPreview(index);
+
+        // 如果有图片数据则显示，否则显示占位图
+        const imgSrc = shot.dataUrl || `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Crect width='60' height='60' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-size='10'%3E已保存%3C/text%3E%3C/svg%3E`;
+
+        item.innerHTML = `
+            <img src="${imgSrc}" alt="截图" style="${shot.dataUrl ? '' : 'opacity:0.5'}">
+            <div class="screenshot-info">
+                <div class="screenshot-status">${shot.status || '已处理'}</div>
+                <div class="screenshot-courses">${shot.courses || '课程截图'}</div>
+            </div>
+            <button class="screenshot-delete" onclick="event.stopPropagation(); deleteScreenshot(${index})" title="删除">×</button>
+        `;
+        list.appendChild(item);
     });
 }
 
-// 添加导入/导出按钮
-(function addExtraButtons() {
+function addPersistenceButtons() {
     const exportBar = document.querySelector('.export-bar');
     if (!exportBar) return;
 
-    // 导入按钮
+    // 添加导入按钮
     const importBtn = document.createElement('button');
-    importBtn.innerHTML = '📂 导入JSON';
+    importBtn.innerHTML = '📥 导入';
     importBtn.onclick = () => {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
-        input.onchange = e => {
+        input.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = event => {
-                try {
-                    const data = JSON.parse(event.target.result);
-                    if (data.records) records = data.records;
-                    if (data.screenshots) screenshots = data.screenshots;
-                    updateUI();
-                    showToast('导入成功');
-                } catch(err) {
-                    showToast('导入失败：文件格式错误');
-                }
-            };
-            reader.readAsText(file);
+
+            AppStorage.importFromFile(file).then((data) => {
+                records = data.records || [];
+                updateUI();
+                showToast('数据导入成功');
+            }).catch((err) => {
+                showToast('导入失败: ' + err.message);
+            });
         };
         input.click();
     };
 
-    // 清空按钮
+    // 添加导出按钮
+    const exportBtn = document.createElement('button');
+    exportBtn.innerHTML = '📤 导出';
+    exportBtn.onclick = () => {
+        AppStorage.exportToFile();
+    };
+
+    // 添加清空按钮
     const clearBtn = document.createElement('button');
     clearBtn.innerHTML = '🗑️ 清空';
     clearBtn.onclick = () => {
@@ -1765,8 +1800,31 @@ function autoSave() {
     };
 
     exportBar.appendChild(importBtn);
+    exportBar.appendChild(exportBtn);
     exportBar.appendChild(clearBtn);
-})();
+}
+
+// 自动保存函数
+function autoSave() {
+    AppStorage.save({
+        records: records,
+        stats: null,
+        screenshots: screenshots
+    });
+}
+
+// 重写关键函数，添加自动保存
+const originalUpdateUI = updateUI;
+updateUI = function() {
+    originalUpdateUI();
+    autoSave();
+};
+
+const originalClearAll = clearAll;
+clearAll = function() {
+    originalClearAll();
+    AppStorage.clear();
+};
 </script>
 </body>
 </html>
