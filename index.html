@@ -286,6 +286,40 @@
 
         .hidden { display: none !important; }
 
+        .native-upload-label {
+            display: flex;
+            width: 100%;
+            margin-top: 12px;
+            text-decoration: none;
+            position: relative;
+            z-index: 5;
+        }
+        .debug-panel {
+            background: #111827;
+            color: #d1d5db;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 16px;
+            font-size: 12px;
+            line-height: 1.6;
+            display: none;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .debug-panel.active { display: block; }
+        .debug-panel strong { color: #93c5fd; }
+        .debug-toggle {
+            width: 100%;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            color: #4b5563;
+            cursor: pointer;
+        }
+
+
         .modal-overlay {
             display: none;
             position: fixed;
@@ -656,6 +690,10 @@
                 <div class="upload-text">点击或拖拽上传截图</div>
                 <div class="upload-hint">自动识别课程名称、日期和时间</div>
             </div>
+            <label for="fileInput" class="btn btn-primary native-upload-label">📁 选择图片（兼容模式）</label>
+            <button type="button" class="debug-toggle" id="debugToggle">显示/隐藏诊断信息</button>
+            <div class="debug-panel" id="debugPanel"><strong>诊断信息</strong>
+页面已加载，等待操作...</div>
             <div class="progress-bar" id="progressBar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
@@ -2508,5 +2546,93 @@ clearAll = function() {
     AppStorage.clear();
 };
 </script>
+
+
+<!-- ==================== GitHub 强兼容诊断脚本 ==================== -->
+<script>
+(function () {
+    function now() {
+        return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    }
+    window.debugLog = function (msg) {
+        var panel = document.getElementById('debugPanel');
+        var line = '[' + now() + '] ' + msg;
+        console.log('[诊断]', msg);
+        if (panel) panel.innerHTML += '\n' + line;
+    };
+
+    window.addEventListener('error', function (e) {
+        window.debugLog('页面错误：' + (e.message || '未知错误') + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+        var reason = e.reason && (e.reason.message || e.reason.toString ? e.reason.toString() : e.reason);
+        window.debugLog('异步错误：' + (reason || '未知错误'));
+    });
+
+    window.addEventListener('DOMContentLoaded', function () {
+        var debugToggle = document.getElementById('debugToggle');
+        var debugPanel = document.getElementById('debugPanel');
+        var fileInput = document.getElementById('fileInput');
+        var uploadArea = document.getElementById('uploadArea');
+        var processBtn = document.getElementById('processBtn');
+        var addBtn = document.querySelector('.input-row button');
+        var cameraBtn = document.getElementById('cameraBtn');
+
+        if (debugToggle && debugPanel) {
+            debugToggle.addEventListener('click', function () {
+                debugPanel.classList.toggle('active');
+                window.debugLog('诊断面板切换；Tesseract=' + typeof window.Tesseract + '；当前截图数=' + (typeof screenshots !== 'undefined' ? screenshots.length : '无法读取'));
+            });
+        }
+
+        window.debugLog('DOMContentLoaded 完成；页面地址=' + location.href);
+        window.debugLog('协议=' + location.protocol + '；如果不是 https://*.github.io/...，请确认不是在 GitHub 代码预览页打开');
+        window.debugLog('Tesseract 初始状态=' + typeof window.Tesseract);
+
+        if (fileInput) {
+            fileInput.addEventListener('click', function () {
+                window.debugLog('已点击上传控件');
+            });
+            fileInput.addEventListener('change', function () {
+                window.debugLog('选择文件数量=' + (fileInput.files ? fileInput.files.length : 0));
+                setTimeout(function () {
+                    window.debugLog('选择后截图数=' + (typeof screenshots !== 'undefined' ? screenshots.length : '无法读取') + '；开始识别按钮 disabled=' + (processBtn ? processBtn.disabled : '无按钮'));
+                }, 300);
+            });
+        } else {
+            window.debugLog('错误：找不到 fileInput');
+        }
+
+        if (uploadArea) {
+            uploadArea.addEventListener('click', function () {
+                window.debugLog('已点击上传区域');
+            });
+        }
+        if (processBtn) {
+            processBtn.addEventListener('click', function () {
+                window.debugLog('已点击开始识别；disabled=' + processBtn.disabled + '；Tesseract=' + typeof window.Tesseract);
+            });
+        }
+        if (addBtn) {
+            addBtn.addEventListener('click', function () {
+                window.debugLog('已点击手动添加');
+            });
+        }
+        if (cameraBtn) {
+            cameraBtn.addEventListener('click', function () {
+                window.debugLog('已点击拍照；摄像头 API=' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '可用' : '不可用'));
+            });
+        }
+
+        // 给无 inline onclick 的环境额外补一层绑定；如果 inline 正常，不会影响原逻辑。
+        if (addBtn && typeof window.addManual === 'function') {
+            addBtn.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') window.addManual();
+            });
+        }
+    });
+})();
+</script>
+
 </body>
 </html>
