@@ -806,7 +806,7 @@
         };
 
         // 非课程时段：识别到也不纳入统计
-        const IGNORE_KEYWORDS = ['离开时段', '离开', '离幵时段', '离并时段'];
+        const IGNORE_KEYWORDS = ['离开时段', '离开', '离幵时段', '离并时段', '创建私教答疑', '创建私教', '创建 私教答疑', '创建 私 教 答 疑'];
 
         // 日期正则
         const DATE_PATTERNS = [
@@ -1315,7 +1315,9 @@
             }
 
             // 同一天同一时间段只能对应一条课程，避免 OCR 把一个时间块识别成两个不同课程
-            return mergeTimeConflicts(records);
+            const merged = mergeTimeConflicts(records);
+            // 丢弃时长为 0 或不合理的无效记录（OCR 乱码导致的时间解析失败）
+            return merged.filter(r => r.minutes >= 5);
         }
 
         function loadImage(src) {
@@ -1530,39 +1532,71 @@
         }
 
         function supplementMissingBlockRecords(records, blocks, fallbackDate) {
-            if (!fallbackDate || blocks.length <= records.length || records.length < 2) return records;
+            if (!fallbackDate || blocks.length <= records.length || records.length < 1) return records;
             const sortedRecords = records
                 .map(r => ({ record: r, range: parseTimeRangeToMinutes(r.timeRange) }))
                 .filter(item => item.range)
                 .sort((a, b) => a.range.start - b.range.start);
-            if (sortedRecords.length < 2) return records;
+            if (sortedRecords.length < 1) return records;
 
-            // 按课程顺序寻找 OCR 记录对应的色块偏移，避免漏掉首条时把后续记录错配到前面的色块。
+            // 用所有课程名匹配的 (block, record) 对来计算时间-y 比例，
+            // 避免只取前两个连续 blocks 导致 offset 错位。
             let best = null;
             const maxOffset = Math.max(0, blocks.length - sortedRecords.length);
             for (let offset = 0; offset <= maxOffset; offset++) {
-                let matches = 0;
+                // 收集课程名匹配的 pairs
+                const pairs = [];
                 for (let i = 0; i < sortedRecords.length && offset + i < blocks.length; i++) {
-                    if (blocks[offset + i].course === sortedRecords[i].record.course) matches++;
+                    if (blocks[offset + i].course === sortedRecords[i].record.course) {
+                        pairs.push({ y: blocks[offset + i].y1, t: sortedRecords[i].range.start });
+                    }
                 }
-                // 用前两条记录校准时间轴
-                const b1 = blocks[offset];
-                const b2 = blocks[offset + 1];
-                const r1 = sortedRecords[0].range;
-                const r2 = sortedRecords[1].range;
-                if (!b1 || !b2 || b2.y1 === b1.y1) continue;
-                const scale = (r2.start - r1.start) / (b2.y1 - b1.y1);
-                if (scale <= 0.05 || scale >= 0.8) continue;
-                const score = matches * 10 - Math.abs(scale - 0.206) * 10;
+                if (pairs.length < 1) continue;
+
+                let scale, score;
+                if (pairs.length >= 2) {
+                    const dy = pairs[pairs.length - 1].y - pairs[0].y;
+                    const dt = pairs[pairs.length - 1].t - pairs[0].t;
+                    if (dy <= 0 || dt <= 0) continue;
+                    scale = dt / dy;
+                    if (scale <= 0.05 || scale >= 0.8) continue;
+                    // 额外检查：用 scale 预测所有 blocks 的时间是否都在 06:00~23:00 内
+                    let outOfRange = 0;
+                    for (const b of blocks) {
+                        const pred = pairs[0].t + (b.y1 - pairs[0].y) * scale;
+                        if (pred < 360 || pred > 1380) outOfRange++;
+                    }
+                    score = pairs.length * 15 - Math.abs(scale - 0.206) * 40 - outOfRange * 20;
+                } else {
+                    // 只有 1 个匹配对，无法算 scale，用经验值
+                    scale = 0.206;
+                    score = pairs.length * 10;
+                }
+
+                // 新增：未匹配 blocks 的预测时间如果落在已有记录之间（填补空隙）则加分，
+                // 如果在已有记录范围之外则减分，避免把错位 offset 误判为最优。
+                const existingStarts = sortedRecords.map(r => r.range.start);
+                const minRecord = Math.min(...existingStarts);
+                const maxRecord = Math.max(...existingStarts);
+                for (let i = 0; i < blocks.length; i++) {
+                    const isMatched = pairs.some(p => p.y === blocks[i].y1);
+                    if (isMatched) continue;
+                    const pred = pairs[0].t + (blocks[i].y1 - pairs[0].y) * scale;
+                    if (pred > minRecord + 10 && pred < maxRecord - 10) {
+                        score += 25; // 填补空隙加分
+                    } else if (pred < minRecord - 30 || pred > maxRecord + 30) {
+                        score -= 15; // 在范围外减分
+                    }
+                }
+
                 if (!best || score > best.score) {
-                    best = { offset, scale, score };
+                    best = { offset, scale, score, firstPair: pairs[0] };
                 }
             }
             if (!best) return records;
 
-            const baseBlock = blocks[best.offset];
             const baseRange = sortedRecords[0].range;
-            const baseY = baseBlock.y1;
+            const baseY = best.firstPair ? best.firstPair.y : blocks[best.offset].y1;
             const bestScale = best.scale;
             const existingRanges = sortedRecords.map(item => item.range);
             let added = 0;
