@@ -1118,7 +1118,8 @@
                 .replace(/\s*-\s*/g, ' - ')
                 .replace(/(\d{1,2})\s*:\s*[.。]?\s*(\d{2})/g, '$1:$2')
                 .replace(/(\d{1,2}:\d{2})(?:\s*-\s*){2,}(\d{1,2}:\d{2})/g, '$1 - $2')
-                .replace(/([0-2]?\d)\s*[;；]\s*([0-5]\d)/g, '$1:$2');
+                .replace(/([0-2]?\d)\s*[;；]\s*([0-5]\d)/g, '$1:$2')
+                .replace(/(\d{4})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})/g, '$1-$2-$3');
         }
 
         function parseWeekRange(text) {
@@ -1448,7 +1449,7 @@
         function applyFallbackDate(records, fallbackDate) {
             if (!fallbackDate) return records;
             records.forEach(record => {
-                record.date = fallbackDate;
+                if (!record.date) record.date = fallbackDate;
             });
             return records;
         }
@@ -1933,49 +1934,38 @@
             if (!sc) return;
 
             let added = 0;
-            let duplicateCount = 0;
-            let selectedCount = 0;
             sc.records.forEach((r, i) => {
                 const course = document.getElementById('edit-course-' + i)?.value;
                 if (course) {
-                    selectedCount++;
-                    const newRecord = {
+                    records.push({
                         id: Date.now() + Math.random(),
                         course: course,
                         timeRange: r.timeRange,
                         minutes: r.minutes,
                         date: r.date,
                         source: 'screenshot'
-                    };
-                    if (isDuplicateRecord(newRecord, records)) {
-                        duplicateCount++;
-                        return;
-                    }
-                    records.push(newRecord);
+                    });
                     added++;
                 }
             })
+
+            // ========== 自动去重：基于课程+日期+时间范围 ==========
+            const beforeDedup = records.length;
+            records = deduplicateRecords(records);
+            const removedCount = beforeDedup - records.length;
+            added -= removedCount;
+            if (removedCount > 0) {
+                showToast('已自动去重：移除了 ' + removedCount + ' 条重复记录（相同课程、日期和时间）');
+            }
 
             if (added) {
                 sc.status = 'done';
                 isConfirming = false;
                 closeModal();
                 updateUI();
-                if (duplicateCount > 0) {
-                    showToast('已添加 ' + added + ' 条记录，另有 ' + duplicateCount + ' 条重复记录未重复添加');
-                } else {
-                    showToast('已添加 ' + added + ' 条记录');
-                }
-            } else if (duplicateCount > 0) {
-                sc.status = 'done';
-                isConfirming = false;
-                closeModal();
-                updateUI();
-                showToast('识别到 ' + duplicateCount + ' 条重复记录，已跳过未重复添加');
-            } else if (selectedCount === 0) {
-                showToast('请至少选择一条课程记录');
+                showToast('已添加 ' + added + ' 条记录');
             } else {
-                showToast('没有可添加的记录');
+                showToast('请至少确认一条记录');
             }
         }
 
