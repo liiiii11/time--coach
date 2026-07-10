@@ -1278,6 +1278,11 @@
                 if (isIgnoredTimeBlock(line)) {
                     continue;
                 }
+                // 过滤纯时间轴刻度行（如 "15:00 - 16:00 - 17:00"），
+                // 这些是周视图左侧的时间刻度，不是课程时间。
+                if (/^\d{1,2}:\d{2}([\s\-–—~]+(\d{1,2}:\d{2}))+\s*$/.test(line)) {
+                    continue;
+                }
 
                 // 周范围标题（如 2026-06-28 - 2026-07-04）不是课程日期，避免误当作当天日期
                 const isWeekRangeLine = !!parseWeekRange(line);
