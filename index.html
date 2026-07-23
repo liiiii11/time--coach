@@ -13,16 +13,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>课程时间统计</title>
     <script>
+        // 异步加载 Tesseract.js，不阻塞页面渲染
+        // 依次尝试多个 CDN，避免单个 CDN 不可访问导致页面空白
         function loadTesseractFallback() {
             if (window.__loadingTesseractFallback) return;
             window.__loadingTesseractFallback = true;
-            var script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js';
-            script.onerror = function() { window.__tesseractLoadFailed = true; };
-            document.head.appendChild(script);
+            var cdns = [
+                'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js',
+                'https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js'
+            ];
+            var idx = 0;
+            function tryNext() {
+                if (idx >= cdns.length) {
+                    window.__tesseractLoadFailed = true;
+                    return;
+                }
+                var script = document.createElement('script');
+                script.src = cdns[idx];
+                script.onload = function() { window.__tesseractLoaded = true; };
+                script.onerror = function() { idx++; tryNext(); };
+                document.head.appendChild(script);
+            }
+            tryNext();
         }
+        // 页面渲染后立即异步加载，不阻塞 HTML 解析
+        window.addEventListener('DOMContentLoaded', loadTesseractFallback);
     </script>
-    <script src='https://unpkg.com/tesseract.js@5.0.5/dist/tesseract.min.js' onerror="loadTesseractFallback()"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -136,6 +153,82 @@
             font-size: 0.9em;
         }
         .input-row button:hover { background: #059669; }
+
+        .target-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .target-title { font-size: 0.9em; font-weight: 600; color: #374151; margin-bottom: 12px; }
+        .target-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .target-input-row input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 0.9em;
+            outline: none;
+        }
+        .target-input-row input:focus { border-color: #667eea; }
+        .target-input-row button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .target-input-row button:hover { background: #5a67d8; }
+        .target-progress {
+            margin-top: 16px;
+        }
+        .target-progress-bar {
+            height: 12px;
+            background: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .target-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 6px;
+            transition: width 0.4s ease;
+        }
+        .target-progress-fill.over {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+        .target-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .target-info-item {
+            text-align: center;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 10px;
+        }
+        .target-info-item .val {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #667eea;
+        }
+        .target-info-item .val.over { color: #10b981; }
+        .target-info-item .val.under { color: #ef4444; }
+        .target-info-item .lab {
+            font-size: 0.7em;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
 
         .screenshots-card {
             background: white;
@@ -683,6 +776,37 @@
             </div>
         </div>
 
+        <div class="target-card">
+            <div class="target-title">🎯 本周目标课时</div>
+            <div class="target-input-row">
+                <input type="number" id="weeklyTargetInput" placeholder="输入本周目标分钟数，如 480" min="0">
+                <button onclick="setWeeklyTarget()">设置目标</button>
+            </div>
+            <div class="target-progress" id="targetProgress" style="display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85em; color:#6b7280;">
+                    <span id="progressLabel">本周进度</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="target-progress-bar">
+                    <div class="target-progress-fill" id="progressFill" style="width:0%"></div>
+                </div>
+                <div class="target-info">
+                    <div class="target-info-item">
+                        <div class="val" id="targetVal">0</div>
+                        <div class="lab">目标(分)</div>
+                    </div>
+                    <div class="target-info-item">
+                        <div class="val" id="doneVal">0</div>
+                        <div class="lab">已上(分)</div>
+                    </div>
+                    <div class="target-info-item">
+                        <div class="val" id="remainVal">0</div>
+                        <div class="lab">还差(分)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="upload-card">
             <div class="upload-area" id="uploadArea">
                 <input type="file" id="fileInput" accept="image/*" multiple aria-label="上传课程截图">
@@ -867,6 +991,7 @@
         let confirmQueue = [];
         let isConfirming = false;
         let currentTab = 'course';
+        let weeklyTarget = 0;
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -2251,6 +2376,73 @@
             document.getElementById('statRecords').textContent = records.length;
             document.getElementById('statCourses').textContent = Object.keys(summary).length;
             document.getElementById('statMinutes').textContent = total;
+            updateWeeklyProgress();
+        }
+
+        function getCurrentWeekKey() {
+            const d = new Date();
+            const dayOfWeek = d.getDay();
+            const sunday = new Date(d);
+            sunday.setDate(d.getDate() - dayOfWeek);
+            const saturday = new Date(sunday);
+            saturday.setDate(sunday.getDate() + 6);
+            return formatDate({year: sunday.getFullYear(), month: sunday.getMonth() + 1, day: sunday.getDate()}) + ' ~ ' +
+                   formatDate({year: saturday.getFullYear(), month: saturday.getMonth() + 1, day: saturday.getDate()});
+        }
+
+        function getCurrentWeekMinutes() {
+            const weekKey = getCurrentWeekKey();
+            let total = 0;
+            records.forEach(r => {
+                if (getWeekKey(r.date) === weekKey) {
+                    total += r.minutes;
+                }
+            });
+            return total;
+        }
+
+        function setWeeklyTarget() {
+            const input = document.getElementById('weeklyTargetInput');
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 0) {
+                showToast('请输入有效的分钟数');
+                return;
+            }
+            weeklyTarget = val;
+            input.value = '';
+            updateWeeklyProgress();
+            showToast('本周目标已设置为 ' + val + ' 分钟');
+            if (typeof autoSave === 'function') autoSave();
+        }
+
+        function updateWeeklyProgress() {
+            const progressEl = document.getElementById('targetProgress');
+            if (!progressEl) return;
+            if (weeklyTarget <= 0) {
+                progressEl.style.display = 'none';
+                return;
+            }
+            progressEl.style.display = 'block';
+            const done = getCurrentWeekMinutes();
+            const remain = weeklyTarget - done;
+            const pct = Math.min(100, Math.round(done / weeklyTarget * 100));
+
+            document.getElementById('targetVal').textContent = weeklyTarget;
+            document.getElementById('doneVal').textContent = done;
+            const remainEl = document.getElementById('remainVal');
+            if (remain <= 0) {
+                remainEl.textContent = '已完成';
+                remainEl.className = 'val over';
+                document.getElementById('progressFill').className = 'target-progress-fill over';
+                document.getElementById('progressLabel').textContent = '本周目标已达成 🎉';
+            } else {
+                remainEl.textContent = remain;
+                remainEl.className = 'val under';
+                document.getElementById('progressFill').className = 'target-progress-fill';
+                document.getElementById('progressLabel').textContent = '本周进度';
+            }
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressPercent').textContent = pct + '%';
         }
 
         function clearAll() {
@@ -2370,6 +2562,7 @@ const AppStorage = {
                     timestamp: s.timestamp,
                     name: s.name
                 })), // 不保存图片数据，避免超出localStorage限制
+                weeklyTarget: state.weeklyTarget || 0,
                 lastUpdate: Date.now()
             };
             localStorage.setItem(this.KEY, JSON.stringify(data));
@@ -2465,6 +2658,12 @@ function restoreData() {
         records = saved.records;
         updateUI();
         showToast(`已恢复 ${saved.records.length} 条记录`);
+    }
+
+    // 恢复本周目标
+    if (typeof saved.weeklyTarget === 'number' && saved.weeklyTarget > 0) {
+        weeklyTarget = saved.weeklyTarget;
+        updateWeeklyProgress();
     }
 
     // 恢复截图列表信息（不恢复图片数据）
@@ -2569,7 +2768,8 @@ function autoSave() {
     AppStorage.save({
         records: records,
         stats: null,
-        screenshots: screenshots
+        screenshots: screenshots,
+        weeklyTarget: weeklyTarget
     });
 }
 
@@ -2583,6 +2783,8 @@ updateUI = function() {
 const originalClearAll = clearAll;
 clearAll = function() {
     originalClearAll();
+    weeklyTarget = 0;
+    updateWeeklyProgress();
     AppStorage.clear();
 };
 </script>
